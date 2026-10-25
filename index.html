@@ -91,6 +91,10 @@ details ol{margin:8px 0 0;padding-left:1.3em}
 .field-err{margin:2px 0 0;color:var(--err);font-size:13px;font-weight:700}
 .field-err::before{content:"⚠ "}
 fieldset.has-err{border:2px solid var(--err)}
+.stamp{margin:0;font-size:12.5px;color:var(--accent);font-weight:700}
+@keyframes flash{0%{box-shadow:0 0 0 6px var(--accent-soft)}100%{box-shadow:0 0 0 0 transparent}}
+.result.flash{animation:flash 1.2s ease-out}
+@media (prefers-reduced-motion:reduce){.result.flash{animation:none}}
 .result.alert{border:2px solid var(--err);background:var(--err-soft)}
 .alert-title{color:var(--err);font-size:15px}
 .alert-msg{margin:0;color:var(--err);font-weight:700;font-size:16px}
@@ -197,7 +201,7 @@ td.on{background:var(--accent-soft);color:var(--accent);font-weight:700}
       </fieldset>
 
       <div class="go">
-        <button type="submit" class="cta" id="goBtn">看我的建議尺寸</button>
+        <button type="button" class="cta" id="goBtn">看我的建議尺寸</button>
         <p class="hint" id="staleMsg" aria-live="polite"></p>
       </div>
     </form>
@@ -216,6 +220,7 @@ const T=[ // [腳長/日碼, 腳寬min, 腳寬max, 歐碼]
  [21.5,8,8,34],[22,8,8.5,34.5],[22.5,8.5,8.5,35],[23,8.5,9,36],[23.5,9,9,37],[24,9,9.5,38],
  [24.5,9.5,9.5,39],[25,9.5,10,40],[25.5,10,10,41],[26,10,10.5,42],[26.5,10.5,10.5,43],[27,10.5,11,44],[27.5,11,11,45]];
 const MIN=21.5, MAX=27.5;
+const ROUND_DOWN=0.1; // 腳長只比某一號多 0.1 公分以內，就算那一號
 const SPLIT=25; // 腳長 25 公分以內 / 以上，判斷方式不同
 const WIDE=0.5; // 腳寬比該尺寸標準上限多 0.5 公分以上才提醒
 const NEAR=0.2; // 腳長只比前一號多 0.2 公分以內，算「靠近前一個尺寸」
@@ -251,15 +256,25 @@ function compute(){
 
   const reasons=[], notes=[], styles=[];
   // 1. 依腳長、腳寬對照尺寸表
-  const byLen=clamp(Math.ceil(L*2)/2);
+  const floorHalf=Math.floor(L*2)/2;
+  const instepNow=document.querySelector('[name=instep]:checked').value;
+  // 腳長只超過某一號 0.1 公分以內、而且腳背沒有厚肉，就算那一號
+  const roundedDown=(L-floorHalf)>1e-9&&(L-floorHalf)<=ROUND_DOWN+1e-9&&instepNow!=='thick'&&floorHalf>=MIN;
+  const byLen=clamp(roundedDown?floorHalf:Math.ceil(L*2)/2);
   let base=byLen;
-  reasons.push(`以比較長的那隻腳來看，腳長 ${L} 公分，對照尺寸表是 ${byLen} 號。`);
+  reasons.push(roundedDown?`以比較長的那隻腳來看，腳長 ${L} 公分，距離 ${byLen} 號比較近，腳背也沒有厚肉的問題，可以選 ${byLen} 號。`:`以比較長的那隻腳來看，腳長 ${L} 公分，對照尺寸表是 ${byLen} 號。`);
   // 平常穿的女鞋日碼
   const wRaw=document.querySelector('#o-women').checked?$('out-women').value.trim():'';
   const usual=parseWomen(wRaw);
   if(!isNaN(usual)&&usual!==parseFloat((wRaw.match(/\d{2}(?:\.5)?/)||[])[0])) reasons.push(`平常穿的女鞋歐碼 ${wRaw.match(/\d{2}(?:\.5)?/)[0]}，換算成日碼是 ${usual} 號。`);
   let usedUsual=false;
-  if(L<=SPLIT){
+  const byWid=(T.find(r=>r[2]>=W)||T[T.length-1])[0];
+  const steps=Math.round((byWid-byLen)*2); // 腳寬對應的尺寸比腳長多幾個半號
+  if(steps>=2&&!isNaN(usual)){
+    // 腳寬跳兩階以上：以客人平常穿的尺寸為主
+    base=clamp(usual); usedUsual=true;
+    reasons.push(`腳寬 ${W} 公分，對應到 ${byWid} 號，比腳長對照的 ${byLen} 號多了兩階以上。這種情況以妳平常穿的 ${usual} 號為主。`);
+  }else if(L<=SPLIT){
     // 25 公分以內：平常尺寸 + 腳長為主
     if(!isNaN(usual)){
       if(Math.abs(usual-byLen)<=0.5){
@@ -268,12 +283,14 @@ function compute(){
       }else notes.push(`妳平常穿的女鞋 ${usual} 號，跟腳長對照的 ${byLen} 號差比較多，先以腳長為準，建議私訊我們一起確認～`);
     }
   }else{
-    // 25 公分以上：腳長第一、腳寬第二
+    // 25 公分以上：腳長第一、腳寬第二（腳寬跳一階就大半號）
     if(W>row(base)[2]&&base<MAX){
       base=clamp(base+0.5);
       reasons.push(`腳寬 ${W} 公分，超過 ${byLen} 號的標準腳寬（${fmtW(row(byLen))} 公分），建議大半號，選 ${base} 號。`);
     }
   }
+  if(base===MAX&&W>row(MAX)[2]) notes.push(`妳的腳寬 ${W} 公分，超過最大 ${MAX} 號的標準腳寬（${row(MAX)[2]} 公分），建議挑寬楦款，或私訊我們一起確認～`);
+  if(steps>=2&&!usedUsual) notes.push('妳的腳寬跟腳長差比較多，建議私訊我們，一起確認尺寸～');
   if(W>row(base)[2]+WIDE){ notes.push(`妳的腳寬 ${W} 公分，比 ${base} 號的標準腳寬（${fmtW(row(base))} 公分）寬不少。`); styles.push('腳寬比較寬：優先挑寬楦款，前掌比較不會擠。'); }
   if(Math.abs(lL-lR)>=0.5||Math.abs(wL-wR)>=0.5) notes.push('妳左右腳差比較多，我們是以大的那隻來選。另一隻如果覺得鬆，可以加鞋墊或後跟貼調整～');
 
@@ -282,21 +299,25 @@ function compute(){
   let rec=base, alt=null;
   const prev=base-0.5;
   const nearPrev = prev>=MIN && (L-prev)<=NEAR && W<=row(prev)[2] && !toeIssue;
+  const usualBigger=usedUsual&&base>byLen, usualSmaller=usedUsual&&base<byLen;
   if(instep==='thin'){
-    rec=clamp(base-0.5);
-    reasons.push('腳背很薄的話，照表選容易前面空空、卡不住腳，建議選小半號。');
     styles.push('腳背很薄：建議挑腳背可以調整的款式，例如有鞋帶、魔鬼氈或扣帶的，才能把腳背固定好。');
-    alt=base;
+    reasons.push(usedUsual?`腳背很薄，尺寸以妳平常穿的 ${base} 號為準，不用再減小。`:`腳背很薄，尺寸照腳長對照的 ${base} 號就可以，不用再減小。`);
+    if(base>MIN) notes.push(`如果挑的是寬楦款，前面空間比較多，腳背薄可能會覺得鬆，可以考慮選小半號的 ${base-0.5} 號。`);
   }else if(instep==='thick'){
-    rec=clamp(base+0.5);
-    reasons.push('腳背很厚肉，建議拿大半號，腳背比較不會被壓到。如果平常穿鞋壓得特別嚴重，可以考慮大一號。');
     styles.push('腳背很厚肉：建議挑鞋帶、魔鬼氈或扣帶可以放鬆的款式，避免整片鞋面包住腳背的款式。');
-    alt=clamp(base+1);
+    if(usualBigger){
+      reasons.push(`妳平常穿的 ${base} 號已經比腳長對照的大半號，應該已經包含腳背厚的空間，所以不再加大。`);
+    }else{
+      rec=clamp(base+0.5);
+      reasons.push('腳背很厚肉，建議拿大半號，腳背比較不會被壓到。如果平常穿鞋壓得特別嚴重，可以考慮大一號。');
+      alt=clamp(base+1);
+    }
   }else if(nearPrev){
     alt=prev;
     notes.push(`妳的數字很接近 ${prev} 號，如果腳趾沒那麼長、平常穿鞋前面常有空隙，也可以考慮小半號的 ${prev} 號。`);
   }
-  if(rec===base&&instep!=='normal') notes.push('已經到尺寸表的邊界了，建議私訊我們幫妳確認款式～');
+  if(rec===base&&instep==='thick'&&!usualBigger) notes.push('已經到尺寸表的邊界了，建議私訊我們幫妳確認款式～');
   if(alt===rec) alt=null;
 
   // 3. 外面的尺寸只做對照
@@ -309,20 +330,26 @@ function compute(){
   if(types.includes('men')) notes.push('男鞋的尺寸和版型跟女鞋不一樣，我們會以量出來的數字為準，再一起幫妳確認～');
   const outRaw=types.includes('women')?$('out-women').value.trim():'';
   const out=parseWomen(outRaw);
-  if(L>SPLIT&&out>=20&&out<=32){
-    if(out>L+0.4) notes.push(`妳在外面穿 ${out} 號比量出來的大，這很常見。外面的鞋尺寸通常會偏大，我們家的尺寸區間不一樣，請以量出來的數字為準就好～`);
+  if(L>SPLIT&&!usedUsual&&out>=20&&out<=32){
+    if(out>L+0.4) notes.push(`妳在外面穿的號碼比量出來的大，這很常見。外面的鞋子尺寸算法跟我們不一樣，號碼常常會比較大；我們大尺碼專區的鞋款，鞋內長度會跟腳長相當，所以這邊會以妳量出來的腳長來參考～`);
     else if(out<L-0.4) notes.push(`妳在外面穿 ${out} 號，比量出來的腳長小，建議再量一次確認，或私訊我們一起看看。`);
   }
   if(alt===rec) alt=null;
   notes.push(...extraNotes(rec,mode));
 
   if(toeIssue){
-    reasons.push(`${toeWhat()}通常不會影響選號，所以仍以腳長、腳寬、腳背為準。`);
     styles.push(`${toeWhat()}：建議挑腳趾前端空間比較大的鞋款。`);
-    if(document.querySelector('[name=sock]:checked').value!=='none') notes.push('有穿襪的話要注意，可能會影響穿著感受，連薄襪也可能壓到腳趾，需要一段時間適應～');
+    const press=[$('toeUp').checked&&'腳趾習慣上翹',$('thickNail').checked&&'指甲比較厚',$('nailExt').checked&&'有做指甲片'].filter(Boolean);
+    if(press.length) notes.push(`${press.join('、')}的話，即使穿薄襪，仍然有可能壓到腳趾。真皮穿一陣子會慢慢變軟，可以看自己能不能接受皮革變軟前的這段時間～`);
   }
-  if($('longToe').checked) notes.push('第二或第三根腳趾比較長的話，量腳長要量到最長的那根腳趾。');
+  if($('longToe').checked){
+    notes.push('第二或第三根腳趾比較長的話，量腳長要量到最長的那根腳趾。');
+    notes.push('如果因為第二或第三根腳趾特別長而選大一點，可能需要搭配小半墊，因為腳的前端通常比較薄，穿起來才不會鬆～');
+  }
+  // 量出來的腳長、腳寬都落在建議尺寸的對照範圍內，就用簡單的說法
+  if(rec===byLen&&base===byLen&&W<=row(byLen)[2]) reasons[0]=`妳的腳長、腳寬測量，相對符合 ${byLen} 號尺寸對照表的腳長、腳寬範圍，可以選 ${byLen} 號。`;
   const thick=Math.min(rec+0.5,MAX);
+  if(alt===thick) alt=null;
   render({rec,thick,alt,reasons,notes,styles});
 }
 
@@ -355,7 +382,6 @@ function render(res,msg){
     ${res.styles.length?`<div class="r-label">建議挑的款式</div><ul class="reasons">${res.styles.map(x=>`<li>${x}</li>`).join('')}</ul>`:''}
     <div class="r-label">為什麼這樣建議</div>
     <ul class="reasons">${res.reasons.map(x=>`<li>${x}</li>`).join('')}${res.notes.map(x=>`<li>${x}</li>`).join('')}</ul>
-    <p class="promise">穿對一雙之後，下次挑其他款式也可以直接參考這個尺寸～</p>
     <div class="send">
       <div class="r-label">把妳的資料傳給我們</div>
       <p class="hint">按下複製，貼到 LINE 或 IG 私訊傳給我們，我們會再幫妳確認尺寸～</p>
@@ -380,7 +406,7 @@ function summaryText(res){
   L.push('襪子：'+pick('sock'));
   const t=toeWhat();
   L.push('腳趾情況：'+(t||'沒有'));
-  L.push('建議尺寸：不穿襪／隱形襪／造型棉襪 '+res.rec+' 號；厚襪 '+res.thick+' 號'+(res.alt?'（也可考慮 '+res.alt+' 號）':''));
+  L.push('建議尺寸：不穿襪／隱形襪／造型棉襪 '+res.rec+' 號；厚襪 '+(res.thick>res.rec?res.thick+' 號':'已是最大尺寸，需私訊確認')+(res.alt?'（也可考慮 '+res.alt+' 號）':''));
   L.push('想詢問的款式：');
   return L.join('\n');
 }
@@ -438,8 +464,8 @@ document.querySelectorAll('#f input').forEach(el=>el.addEventListener('input',()
   if(nxt&&nxt.classList.contains('field-err')) nxt.remove();
   const fs=el.closest('fieldset'); if(fs&&!fs.querySelector('.need')) fs.classList.remove('has-err');
 }));
-$('f').addEventListener('submit',e=>{
-  e.preventDefault();
+function onGo(e){
+  if(e) e.preventDefault();
   const errs=validate();
   if(errs.length){
     const list=errs.map(x=>x.name);
@@ -457,12 +483,19 @@ $('f').addEventListener('submit',e=>{
   }
   $('result').classList.remove('alert');
   compute(); computed=true;
+  const t=new Date(); const stamp=document.createElement('p'); stamp.className='stamp';
+  stamp.textContent=`✓ 已依照妳填的資料更新（${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}:${String(t.getSeconds()).padStart(2,'0')}）`;
+  $('result').prepend(stamp);
+  $('result').classList.remove('flash'); void $('result').offsetWidth; $('result').classList.add('flash');
   $('goBtn').textContent='更新建議尺寸'; $('result').classList.remove('stale');
   const empty=$('result').querySelector('.empty');
   $('staleMsg').textContent=empty?empty.textContent:'';
   $('staleMsg').classList.toggle('err',!!empty);
   if(window.matchMedia('(max-width:819px)').matches) $('result').scrollIntoView({behavior:'smooth',block:'start'});
-});
+}
+$('goBtn').addEventListener('click',onGo);
+$('f').addEventListener('submit',e=>e.preventDefault());
+$('f').addEventListener('keydown',e=>{ if(e.key==='Enter'&&e.target.tagName==='INPUT'){ e.preventDefault(); onGo(); } });
 toggles();
 render(null,'填好資料後，按下「看我的建議尺寸」，這裡就會出現妳的尺寸和原因～');
 </script>
