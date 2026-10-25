@@ -12,16 +12,16 @@
 /* Layout: single column on phone, form + sticky result side by side on wide screens */
 :root{
   --bg:#f7f2f4; --surface:#ffffff; --ink:#2e2230; --muted:#7a6a78;
-  --line:#e6dbe1; --accent:#9b3d6b; --accent-soft:#f3e2ea; --warn:#a35a12;
+  --line:#e6dbe1; --accent:#9b3d6b; --accent-soft:#f3e2ea; --warn:#a35a12; --err:#c62828; --err-soft:#fdecea;
   --display:"LXGW WenKai TC","Noto Serif TC",serif;
   --body:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --bg:#1b1519; --surface:#251d23; --ink:#f2e8ee; --muted:#b4a2ae;
-  --line:#3a2e37; --accent:#e58bb5; --accent-soft:#3a2431; --warn:#f0b26b; color-scheme:dark}}
+  --line:#3a2e37; --accent:#e58bb5; --accent-soft:#3a2431; --warn:#f0b26b; --err:#ff8a80; --err-soft:#3b1f1f; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#1b1519; --surface:#251d23; --ink:#f2e8ee; --muted:#b4a2ae;
-  --line:#3a2e37; --accent:#e58bb5; --accent-soft:#3a2431; --warn:#f0b26b; color-scheme:dark}
+  --line:#3a2e37; --accent:#e58bb5; --accent-soft:#3a2431; --warn:#f0b26b; --err:#ff8a80; --err-soft:#3b1f1f; color-scheme:dark}
 body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.65}
 .wrap{max-width:980px;margin:0 auto;padding-block:28px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 header{display:grid;gap:6px;margin-bottom:22px}
@@ -86,6 +86,12 @@ details ol{margin:8px 0 0;padding-left:1.3em}
 .cta:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
 .empty{color:var(--muted);font-size:14px}
 .go{display:grid;gap:6px;justify-items:start}
+#staleMsg.err{color:var(--err);font-weight:700}
+.need,.outSize.need{border-color:var(--err)!important;background:var(--err-soft)!important;border-width:2px!important}
+.field-err{margin:2px 0 0;color:var(--err);font-size:13px;font-weight:700}
+.field-err::before{content:"⚠ "}
+fieldset.has-err{border:2px solid var(--err)}
+.err-banner{margin:0;color:var(--err);background:var(--err-soft);border-radius:10px;padding:10px 12px;font-weight:700;font-size:14px}
 .go .cta{font-size:16px;padding:13px 26px}
 .result.stale{border-style:dashed;opacity:.7}
 .send{display:grid;gap:8px;border-top:1px dashed var(--line);padding-top:14px}
@@ -110,7 +116,7 @@ td.on{background:var(--accent-soft);color:var(--accent);font-weight:700}
   </header>
 
   <div class="grid">
-    <form class="form" id="f" autocomplete="off">
+    <form class="form" id="f" autocomplete="off" novalidate>
       <fieldset id="fs-measure">
         <legend>妳的腳長和腳寬</legend>
         <div class="feet">
@@ -206,6 +212,7 @@ const T=[ // [腳長/日碼, 腳寬min, 腳寬max, 歐碼]
  [21.5,8,8,34],[22,8,8.5,34.5],[22.5,8.5,8.5,35],[23,8.5,9,36],[23.5,9,9,37],[24,9,9.5,38],
  [24.5,9.5,9.5,39],[25,9.5,10,40],[25.5,10,10,41],[26,10,10.5,42],[26.5,10.5,10.5,43],[27,10.5,11,44],[27.5,11,11,45]];
 const MIN=21.5, MAX=27.5;
+const SPLIT=25; // 腳長 25 公分以內 / 以上，判斷方式不同
 const WIDE=0.5; // 腳寬比該尺寸標準上限多 0.5 公分以上才提醒
 const NEAR=0.2; // 腳長只比前一號多 0.2 公分以內，算「靠近前一個尺寸」
 const $=id=>document.getElementById(id);
@@ -232,7 +239,27 @@ function compute(){
   // 1. 依腳長、腳寬對照尺寸表
   const byLen=clamp(Math.ceil(L*2)/2);
   let base=byLen;
-  reasons.push(`以比較長的那隻腳來看，腳長 ${L} 公分，對照尺寸表是 ${base} 號。`);
+  reasons.push(`以比較長的那隻腳來看，腳長 ${L} 公分，對照尺寸表是 ${byLen} 號。`);
+  // 平常穿的女鞋日碼
+  const wRaw=document.querySelector('#o-women').checked?$('out-women').value.trim():'';
+  const wm=/(?:US|UK|歐碼|EU)/i.test(wRaw)?null:wRaw.match(/(\d{2}(?:\.5)?)/);
+  const usual=wm&&+wm[1]>=20&&+wm[1]<=32?+wm[1]:NaN;
+  let usedUsual=false;
+  if(L<=SPLIT){
+    // 25 公分以內：平常尺寸 + 腳長為主
+    if(!isNaN(usual)){
+      if(Math.abs(usual-byLen)<=0.5){
+        base=clamp(usual); usedUsual=true;
+        reasons.push(base===byLen?`平常穿的女鞋也是 ${usual} 號，跟腳長對照的一樣。`:`腳長 25 公分以內，平常穿的女鞋尺寸很有參考價值。妳平常穿 ${usual} 號，跟腳長只差半號，以 ${usual} 號為準。`);
+      }else notes.push(`妳平常穿的女鞋 ${usual} 號，跟腳長對照的 ${byLen} 號差比較多，先以腳長為準，建議私訊我們一起確認～`);
+    }
+  }else{
+    // 25 公分以上：腳長第一、腳寬第二
+    if(W>row(base)[2]&&base<MAX){
+      base=clamp(base+0.5);
+      reasons.push(`腳寬 ${W} 公分，超過 ${byLen} 號的標準腳寬（${fmtW(row(byLen))} 公分），建議大半號，選 ${base} 號。`);
+    }
+  }
   if(W>row(base)[2]+WIDE){ notes.push(`妳的腳寬 ${W} 公分，比 ${base} 號的標準腳寬（${fmtW(row(base))} 公分）寬不少。`); styles.push('腳寬比較寬：優先挑寬楦款，前掌比較不會擠。'); }
   if(Math.abs(lL-lR)>=0.5||Math.abs(wL-wR)>=0.5) notes.push('妳左右腳差比較多，我們是以大的那隻來選。另一隻如果覺得鬆，可以加鞋墊或後跟貼調整～');
 
@@ -240,7 +267,7 @@ function compute(){
   const instep=document.querySelector('[name=instep]:checked').value;
   let rec=base, alt=null;
   const prev=base-0.5;
-  const nearPrev = prev>=MIN && (L-prev)<=NEAR;
+  const nearPrev = prev>=MIN && (L-prev)<=NEAR && W<=row(prev)[2] && !toeIssue;
   if(instep==='thin'){
     rec=clamp(base-0.5);
     reasons.push('腳背很薄的話，照表選容易前面空空、卡不住腳，建議選小半號。');
@@ -269,7 +296,7 @@ function compute(){
   const outRaw=types.includes('women')?$('out-women').value.trim():'';
   const m=/(?:US|UK|歐碼|EU)/i.test(outRaw)?null:outRaw.match(/(\d{2}(?:\.5)?)/);
   const out=m?parseFloat(m[1]):NaN;
-  if(mode!=='before'&&out>=20&&out<=32){
+  if(L>SPLIT&&out>=20&&out<=32){
     if(out>L+0.4) notes.push(`妳在外面穿 ${out} 號比量出來的大，這很常見。外面的鞋尺寸通常會偏大，我們家的尺寸區間不一樣，請以量出來的數字為準就好～`);
     else if(out<L-0.4) notes.push(`妳在外面穿 ${out} 號，比量出來的腳長小，建議再量一次確認，或私訊我們一起看看。`);
   }
@@ -366,9 +393,54 @@ $('toeNone').addEventListener('change',()=>{ if($('toeNone').checked) TOE_IDS.fo
 TOE_IDS.forEach(id=>$(id).addEventListener('change',()=>{ if($(id).checked) $('toeNone').checked=false; else if(!hasToe()) $('toeNone').checked=true; }));
 $('f').addEventListener('input',markStale);
 $('f').addEventListener('change',markStale);
+function clearErrs(){
+  document.querySelectorAll('.field-err').forEach(x=>x.remove());
+  document.querySelectorAll('.need').forEach(x=>x.classList.remove('need'));
+  document.querySelectorAll('fieldset.has-err').forEach(x=>x.classList.remove('has-err'));
+}
+function flag(el,msg,after){
+  el.classList&&el.classList.add('need');
+  const m=document.createElement('p'); m.className='field-err'; m.textContent=msg;
+  (after||el).insertAdjacentElement('afterend',m);
+  el.closest('fieldset')?.classList.add('has-err');
+}
+function validate(){
+  clearErrs();
+  const errs=[];
+  const foot={lenL:['左腳腳長',18,32],widL:['左腳腳寬',6,14],lenR:['右腳腳長',18,32],widR:['右腳腳寬',6,14]};
+  for(const id in foot){
+    const [name,lo,hi]=foot[id], el=$(id), v=parseFloat(el.value);
+    if(!el.value.trim()){flag(el,`請填寫${name}（公分）`);errs.push(el);}
+    else if(isNaN(v)||v<lo||v>hi){flag(el,`${name}的數字好像不太對，請再確認（公分）`);errs.push(el);}
+  }
+  const types=[...document.querySelectorAll('[name=outType]:checked')];
+  if(!types.length){const box=$('fs-outside').querySelector('.opts');flag(box,'請至少勾選一種平常常穿的鞋');errs.push(box);}
+  types.forEach(c=>{const el=$('out-'+c.value); if(!el.value.trim()){flag(el,'請寫下這種鞋平常穿幾號',$('row-'+c.value));errs.push(el);}});
+  return errs;
+}
+document.querySelectorAll('#f input').forEach(el=>el.addEventListener('input',()=>{
+  if(!el.classList.contains('need')) return;
+  el.classList.remove('need');
+  const lbl=el.closest('label'); const nxt=(lbl&&lbl.classList.contains('sentence')?lbl:el).nextElementSibling;
+  if(nxt&&nxt.classList.contains('field-err')) nxt.remove();
+  const fs=el.closest('fieldset'); if(fs&&!fs.querySelector('.need')) fs.classList.remove('has-err');
+}));
 $('f').addEventListener('submit',e=>{
-  e.preventDefault(); compute(); computed=true;
-  $('goBtn').textContent='更新建議尺寸'; $('staleMsg').textContent=''; $('result').classList.remove('stale');
+  e.preventDefault();
+  const errs=validate();
+  if(errs.length){
+    render(null,`還有 ${errs.length} 個地方沒填好，請看標紅色的格子～`);
+    $('result').querySelector('.empty').className='err-banner';
+    $('staleMsg').textContent=`還有 ${errs.length} 個地方沒填好，請看上面標紅色的格子`; $('staleMsg').classList.add('err');
+    errs[0].scrollIntoView({behavior:'smooth',block:'center'});
+    if(errs[0].focus) setTimeout(()=>errs[0].focus({preventScroll:true}),300);
+    return;
+  }
+  compute(); computed=true;
+  $('goBtn').textContent='更新建議尺寸'; $('result').classList.remove('stale');
+  const empty=$('result').querySelector('.empty');
+  $('staleMsg').textContent=empty?empty.textContent:'';
+  $('staleMsg').classList.toggle('err',!!empty);
   if(window.matchMedia('(max-width:819px)').matches) $('result').scrollIntoView({behavior:'smooth',block:'start'});
 });
 toggles();
