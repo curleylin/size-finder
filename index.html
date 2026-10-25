@@ -221,6 +221,16 @@ const fmtW=r=>r[1]===r[2]?`${r[1]}`:`${r[1]}–${r[2]}`;
 const clamp=s=>Math.min(MAX,Math.max(MIN,s));
 
 
+// 把客人寫的女鞋尺寸換成日碼：20–32 當日碼，33–46 或寫「歐碼／EU」當歐碼換算，US／UK 不判斷
+function parseWomen(raw){
+  if(!raw||/(?:US|UK|美碼|英碼)/i.test(raw)) return NaN;
+  const m=raw.match(/\d{2}(?:\.5)?/); if(!m) return NaN;
+  const v=parseFloat(m[0]);
+  const isEU=/(?:歐碼|EU)/i.test(raw)||(v>=33&&v<=46);
+  if(!isEU) return v>=20&&v<=32?v:NaN;
+  const r=T.find(r=>r[3]>=v); // 歐碼沒有剛好對到時，取下一個比較大的
+  return r?r[0]:(v<=46?MAX:NaN);
+}
 function toggles(){
   document.querySelectorAll('[name=outType]').forEach(c=>{$('row-'+c.value).hidden=!c.checked;});
 }
@@ -242,8 +252,8 @@ function compute(){
   reasons.push(`以比較長的那隻腳來看，腳長 ${L} 公分，對照尺寸表是 ${byLen} 號。`);
   // 平常穿的女鞋日碼
   const wRaw=document.querySelector('#o-women').checked?$('out-women').value.trim():'';
-  const wm=/(?:US|UK|歐碼|EU)/i.test(wRaw)?null:wRaw.match(/(\d{2}(?:\.5)?)/);
-  const usual=wm&&+wm[1]>=20&&+wm[1]<=32?+wm[1]:NaN;
+  const usual=parseWomen(wRaw);
+  if(!isNaN(usual)&&usual!==parseFloat((wRaw.match(/\d{2}(?:\.5)?/)||[])[0])) reasons.push(`平常穿的女鞋歐碼 ${wRaw.match(/\d{2}(?:\.5)?/)[0]}，換算成日碼是 ${usual} 號。`);
   let usedUsual=false;
   if(L<=SPLIT){
     // 25 公分以內：平常尺寸 + 腳長為主
@@ -294,8 +304,7 @@ function compute(){
   if(types.includes('sport')) notes.push('運動鞋可以用鞋帶調整鬆緊，買的時候通常也已經預留了穿運動襪的空間，所以運動鞋的尺寸大多會選得比較大。這個號碼不能直接拿來對照，請以量出來的腳長為準～');
   if(types.includes('men')) notes.push('男鞋的尺寸和版型跟女鞋不一樣，我們會以量出來的數字為準，再一起幫妳確認～');
   const outRaw=types.includes('women')?$('out-women').value.trim():'';
-  const m=/(?:US|UK|歐碼|EU)/i.test(outRaw)?null:outRaw.match(/(\d{2}(?:\.5)?)/);
-  const out=m?parseFloat(m[1]):NaN;
+  const out=parseWomen(outRaw);
   if(L>SPLIT&&out>=20&&out<=32){
     if(out>L+0.4) notes.push(`妳在外面穿 ${out} 號比量出來的大，這很常見。外面的鞋尺寸通常會偏大，我們家的尺寸區間不一樣，請以量出來的數字為準就好～`);
     else if(out<L-0.4) notes.push(`妳在外面穿 ${out} 號，比量出來的腳長小，建議再量一次確認，或私訊我們一起看看。`);
