@@ -331,7 +331,7 @@ function compute(){
   const outRaw=types.includes('women')?$('out-women').value.trim():'';
   const out=parseWomen(outRaw);
   if(L>SPLIT&&!usedUsual&&out>=20&&out<=32){
-    if(out>L+0.4) notes.push(`妳在外面穿的號碼比量出來的大，這很常見。外面的鞋子尺寸算法跟我們不一樣，號碼常常會比較大；我們大尺碼專區的鞋款，鞋內長度會跟腳長相當，所以這邊會以妳量出來的腳長來參考～`);
+    if(out>L+0.4) notes.push(`妳平常選的尺寸看起來數字比較大，這很常見，因為每一家尺寸算法不太一樣；但我們大尺碼專區的鞋款，鞋內長度會跟腳長相當，所以這邊會以妳量出來的腳長來參考～`);
     else if(out<L-0.4) notes.push(`妳在外面穿 ${out} 號，比量出來的腳長小，建議再量一次確認，或私訊我們一起看看。`);
   }
   if(alt===rec) alt=null;
