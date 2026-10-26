@@ -259,7 +259,9 @@ function compute(){
   const floorHalf=Math.floor(L*2)/2;
   const instepNow=document.querySelector('[name=instep]:checked').value;
   // 腳長只超過某一號 0.1 公分以內、而且腳背沒有厚肉，就算那一號
-  const roundedDown=(L-floorHalf)>1e-9&&(L-floorHalf)<=ROUND_DOWN+1e-9&&instepNow!=='thick'&&floorHalf>=MIN;
+  const nearLower=(L-floorHalf)>1e-9&&(L-floorHalf)<=ROUND_DOWN+1e-9&&floorHalf>=MIN;
+  const roundedDown=nearLower&&instepNow!=='thick';
+  const thickKeptUp=nearLower&&instepNow==='thick'; // 腳背厚所以不往下算，已經多留了半號
   const byLen=clamp(roundedDown?floorHalf:Math.ceil(L*2)/2);
   let base=byLen;
   reasons.push(roundedDown?`以比較長的那隻腳來看，腳長 ${L} 公分，距離 ${byLen} 號比較近，腳背也沒有厚肉的問題，可以選 ${byLen} 號。`:`以比較長的那隻腳來看，腳長 ${L} 公分，對照尺寸表是 ${byLen} 號。`);
@@ -283,10 +285,14 @@ function compute(){
       }else notes.push(`妳平常穿的女鞋 ${usual} 號，跟腳長對照的 ${byLen} 號差比較多，先以腳長為準，建議私訊我們一起確認～`);
     }
   }else{
-    // 25 公分以上：腳長第一、腳寬第二（腳寬跳一階就大半號）
+    // 25 公分以上：腳長第一、腳寬第二，平常尺寸差半號以內也一起參考
+    if(!isNaN(usual)&&Math.abs(usual-byLen)<=0.5){
+      base=clamp(usual); usedUsual=true;
+      reasons.push(base===byLen?`平常穿的女鞋也是 ${usual} 號，跟腳長對照的一樣。`:`妳平常穿 ${usual} 號，跟腳長對照的 ${byLen} 號只差半號，一起參考後以 ${usual} 號為準。`);
+    }
     if(W>row(base)[2]&&base<MAX){
-      base=clamp(base+0.5);
-      reasons.push(`腳寬 ${W} 公分，超過 ${byLen} 號的標準腳寬（${fmtW(row(byLen))} 公分），建議大半號，選 ${base} 號。`);
+      const from=base; base=clamp(base+0.5);
+      reasons.push(`腳寬 ${W} 公分，超過 ${from} 號的標準腳寬（${fmtW(row(from))} 公分），建議大半號，選 ${base} 號。`);
     }
   }
   if(base===MAX&&W>row(MAX)[2]) notes.push(`妳的腳寬 ${W} 公分，超過最大 ${MAX} 號的標準腳寬（${row(MAX)[2]} 公分），建議挑寬楦款，或私訊我們一起確認～`);
@@ -308,6 +314,9 @@ function compute(){
     styles.push('腳背很厚肉：建議挑鞋帶、魔鬼氈或扣帶可以放鬆的款式，避免整片鞋面包住腳背的款式。');
     if(usualBigger){
       reasons.push(`妳平常穿的 ${base} 號已經比腳長對照的大半號，應該已經包含腳背厚的空間，所以不再加大。`);
+    }else if(thickKeptUp&&base===byLen){
+      reasons.push(`腳長 ${L} 公分其實很接近 ${floorHalf} 號，因為腳背很厚肉，所以選 ${byLen} 號，已經多留了腳背的空間，不用再加大。`);
+      alt=clamp(base+0.5);
     }else{
       rec=clamp(base+0.5);
       reasons.push('腳背很厚肉，建議拿大半號，腳背比較不會被壓到。如果平常穿鞋壓得特別嚴重，可以考慮大一號。');
@@ -346,6 +355,7 @@ function compute(){
     notes.push('第二或第三根腳趾比較長的話，量腳長要量到最長的那根腳趾。');
     notes.push('如果因為第二或第三根腳趾特別長而選大一點，可能需要搭配小半墊，因為腳的前端通常比較薄，穿起來才不會鬆～');
   }
+  if(roundedDown&&rec!==byLen) reasons[0]=`以比較長的那隻腳來看，腳長 ${L} 公分，最接近 ${byLen} 號。`;
   // 量出來的腳長、腳寬都落在建議尺寸的對照範圍內，就用簡單的說法
   if(rec===byLen&&base===byLen&&W<=row(byLen)[2]) reasons[0]=`妳的腳長、腳寬測量，相對符合 ${byLen} 號尺寸對照表的腳長、腳寬範圍，可以選 ${byLen} 號。`;
   const thick=Math.min(rec+0.5,MAX);
