@@ -272,7 +272,12 @@ function compute(){
   let usedUsual=false;
   const byWid=(T.find(r=>r[2]>=W)||T[T.length-1])[0];
   const steps=Math.round((byWid-byLen)*2); // 腳寬對應的尺寸比腳長多幾個半號
-  if(steps>=2&&!isNaN(usual)){
+  const usualTooBig=L>SPLIT&&!isNaN(usual)&&usual-byLen>=1&&instepNow!=='thick'; // 平常尺寸比腳長大一號以上、腳背不厚：外面算法不同
+  if(steps>=2&&usualTooBig){
+    // 腳寬跳兩階，但平常尺寸大太多：回到以腳長為主
+    reasons.push(`妳的腳寬比較寬，但腳背一般，平常穿的尺寸又比腳長對照的大了一號以上，這邊以腳長對照的 ${byLen} 號為主。`);
+    styles.push('腳寬比較寬：優先挑寬楦款，前掌比較不會擠。');
+  }else if(steps>=2&&!isNaN(usual)){
     // 腳寬跳兩階以上：以客人平常穿的尺寸為主
     base=clamp(usual); usedUsual=true;
     reasons.push(`腳寬 ${W} 公分，對應到 ${byWid} 號，比腳長對照的 ${byLen} 號多了兩階以上。這種情況以妳平常穿的 ${usual} 號為主。`);
@@ -296,8 +301,8 @@ function compute(){
     }
   }
   if(base===MAX&&W>row(MAX)[2]) notes.push(`妳的腳寬 ${W} 公分，超過最大 ${MAX} 號的標準腳寬（${row(MAX)[2]} 公分），建議挑寬楦款，或私訊我們一起確認～`);
-  if(steps>=2&&!usedUsual) notes.push('妳的腳寬跟腳長差比較多，建議私訊我們，一起確認尺寸～');
-  if(W>row(base)[2]+WIDE){ notes.push(`妳的腳寬 ${W} 公分，比 ${base} 號的標準腳寬（${fmtW(row(base))} 公分）寬不少。`); styles.push('腳寬比較寬：優先挑寬楦款，前掌比較不會擠。'); }
+  if(steps>=2&&!usedUsual&&!usualTooBig) notes.push('妳的腳寬跟腳長差比較多，建議私訊我們，一起確認尺寸～');
+  if(W>row(base)[2]+WIDE){ notes.push(`妳的腳寬 ${W} 公分，比 ${base} 號的標準腳寬（${fmtW(row(base))} 公分）寬不少。`); if(!styles.some(x=>x.startsWith('腳寬比較寬'))) styles.push('腳寬比較寬：優先挑寬楦款，前掌比較不會擠。'); }
   if(Math.abs(lL-lR)>=0.5||Math.abs(wL-wR)>=0.5) notes.push('妳左右腳差比較多，我們是以大的那隻來選。另一隻如果覺得鬆，可以加鞋墊或後跟貼調整～');
 
   // 2. 依腳背厚薄微調
@@ -313,7 +318,7 @@ function compute(){
   }else if(instep==='thick'){
     styles.push('腳背很厚肉：建議挑鞋帶、魔鬼氈或扣帶可以放鬆的款式，避免整片鞋面包住腳背的款式。');
     if(usualBigger){
-      reasons.push(`妳平常穿的 ${base} 號已經比腳長對照的大半號，應該已經包含腳背厚的空間，所以不再加大。`);
+      reasons.push(`妳平常穿的 ${base} 號已經比腳長對照的大，應該已經包含腳背厚的空間，所以不再加大。`);
     }else if(thickKeptUp&&base===byLen){
       reasons.push(`腳長 ${L} 公分其實很接近 ${floorHalf} 號，因為腳背很厚肉，所以選 ${byLen} 號，已經多留了腳背的空間，不用再加大。`);
       alt=clamp(base+0.5);
@@ -326,7 +331,7 @@ function compute(){
     alt=prev;
     notes.push(`妳的數字很接近 ${prev} 號，如果腳趾沒那麼長、平常穿鞋前面常有空隙，也可以考慮小半號的 ${prev} 號。`);
   }
-  if(rec===base&&instep==='thick'&&!usualBigger) notes.push('已經到尺寸表的邊界了，建議私訊我們幫妳確認款式～');
+  if(rec===base&&instep==='thick'&&!usualBigger&&!thickKeptUp) notes.push('已經到尺寸表的邊界了，建議私訊我們幫妳確認款式～');
   if(alt===rec) alt=null;
 
   // 3. 外面的尺寸只做對照
